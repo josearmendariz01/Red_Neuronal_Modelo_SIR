@@ -1,123 +1,53 @@
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset
+import torch  # Importa PyTorch, una biblioteca de aprendizaje automático
+import torch.nn as nn  # Importa el módulo de redes neuronales de PyTorch
+from torch.utils.data import Dataset  # Importa la clase base para datasets de PyTorch
 
-
-class ImprovedSIRNetwork(nn.Module):
-    def __init__(self, input_size):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(input_size, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            
-            nn.Linear(64, 32),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            
-            nn.Linear(32, 2)
-        )
-
-    def forward(self, x):
-        return self.layers(x)
-
-##################################################
-## representing train data as a Dataset object
-##################################################
-
+# Definición de la clase SIRDataset que hereda de Dataset
 class SIRDataset(Dataset):
     def __init__(self, S, I, R, beta, gamma):
-        
-        self.S = torch.tensor(S, dtype=torch.float32)
-        self.I = torch.tensor(I, dtype=torch.float32)
-        self.R = torch.tensor(R, dtype=torch.float32)
-        self.beta = torch.tensor(beta, dtype=torch.float32)
-        self.gamma = torch.tensor(gamma, dtype=torch.float32)
+        """
+        Inicializa el dataset con S, I, R, beta y gamma.
+        """
+        self.S = S  # Asigna S al atributo de instancia self.S
+        self.I = I  # Asigna I al atributo de instancia self.I
+        self.R = R  # Asigna R al atributo de instancia self.R
+        self.beta = beta  # Asigna beta al atributo de instancia self.beta
+        self.gamma = gamma  # Asigna gamma al atributo de instancia self.gamma
 
     def __len__(self):
-        return len(self.S)
+        """
+        Retorna la longitud del dataset.
+        """
+        return len(self.S)  # Retorna la longitud del atributo self.S
 
     def __getitem__(self, idx):
-        s = self.S[idx]
-        i = self.I[idx]
-        r = self.R[idx]
-        b = self.beta[idx]
-        g = self.gamma[idx]
+        """
+        Retorna un solo elemento del dataset dado un índice.
+        """
+        # Combina S, I y R en un solo tensor y lo convierte a tipo float32
+        SIR = torch.tensor(self.S[idx].tolist() + self.I[idx].tolist() + self.R[idx].tolist(), dtype=torch.float32)
+        # Crea un tensor con beta y gamma como objetivo
+        target = torch.tensor([self.beta[idx], self.gamma[idx]], dtype=torch.float32)
+        return SIR, target  # Retorna el tensor de entrada y el objetivo
 
-        x = torch.cat((s, i, r))  # Concatenating the arrays
-        y = torch.tensor([b, g], dtype=torch.float32)
-        return x, y
-    
-
+# Definición de la clase SIRNetwork que hereda de nn.Module
 class SIRNetwork(nn.Module):
-    '''
-    Multi-layer perceptron for non-linear regression.
-    '''
     def __init__(self, input_size):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(input_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 2)
-        )
+        """
+        Inicializa la red neuronal con capas densas.
+        """
+        super(SIRNetwork, self).__init__()  # Llama al constructor de la clase base
+        self.fc1 = nn.Linear(input_size, 64)  # Capa totalmente conectada con 64 neuronas
+        self.fc2 = nn.Linear(64, 128)  # Capa totalmente conectada con 128 neuronas
+        self.fc3 = nn.Linear(128, 64)  # Capa totalmente conectada con 64 neuronas
+        self.fc4 = nn.Linear(64, 2)  # Capa totalmente conectada con 2 neuronas de salida
 
     def forward(self, x):
-        return(self.layers(x))
-    
-
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ResidualBlock, self).__init__()
-        self.block = nn.Sequential(
-            nn.Linear(in_channels, out_channels),
-            nn.BatchNorm1d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Linear(out_channels, out_channels),
-            nn.BatchNorm1d(out_channels)
-        )
-        self.shortcut = nn.Sequential()
-        if in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Linear(in_channels, out_channels),
-                nn.BatchNorm1d(out_channels)
-            )
-
-    def forward(self, x):
-        residual = x
-        out = self.block(x)
-        residual = self.shortcut(residual)
-        out += residual
-        out = nn.ReLU(inplace=True)(out)
-        return out
-
-class ResNetSIR(nn.Module):
-    def __init__(self, input_size):
-        super(ResNetSIR, self).__init__()
-        self.model = nn.Sequential(
-            ResidualBlock(input_size, 128),
-            ResidualBlock(128, 128),
-            ResidualBlock(128, 64),
-            ResidualBlock(64, 32),
-            nn.Linear(32, 2)
-        )
-
-    def forward(self, x):
-        return self.model(x)
+        """
+        Propagación hacia adelante de los datos a través de la red.
+        """
+        x = torch.relu(self.fc1(x))  # Aplica la función de activación ReLU a la primera capa
+        x = torch.relu(self.fc2(x))  # Aplica la función de activación ReLU a la segunda capa
+        x = torch.relu(self.fc3(x))  # Aplica la función de activación ReLU a la tercera capa
+        x = self.fc4(x)  # Pasa los datos por la última capa sin activación
+        return x  # Retorna el resultado final
